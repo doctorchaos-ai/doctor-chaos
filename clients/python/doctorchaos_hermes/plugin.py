@@ -180,9 +180,15 @@ class DoctorChaosContextEngine(_HermesContextEngine):
             self.sub_engine.update_from_response(usage)
 
     def should_compress(self, prompt_tokens: int, context_length: int) -> bool:
-        if context_length <= 0:
-            return False
-        return prompt_tokens > self.threshold_fraction * context_length
+        # Doctor Chaos needs compress() called on EVERY turn to route
+        # messages into topic spaces, regardless of whether the context
+        # window is "full". Without this, _flush_unrouted() never fires
+        # and the daemon never sees any messages.
+        #
+        # The original design gated on threshold_fraction, which made
+        # sense for a pure compression engine but is wrong for a routing
+        # engine that must see every message to do its job.
+        return True
 
     def compress(
         self,
@@ -192,6 +198,7 @@ class DoctorChaosContextEngine(_HermesContextEngine):
     ) -> List[Mapping[str, Any]]:
         try:
             self._flush_unrouted(messages)
+            self._auto_package()
             chosen = self._choose_space(focus_topic)
             if chosen is None:
                 # No spaces yet — nothing to compress against; pass
@@ -213,6 +220,7 @@ class DoctorChaosContextEngine(_HermesContextEngine):
                 backoff *= 2
                 try:
                     self._flush_unrouted(messages)
+                    self._auto_package()
                     chosen = self._choose_space(focus_topic)
                     if chosen is None:
                         self._set_reachable()
@@ -285,6 +293,21 @@ class DoctorChaosContextEngine(_HermesContextEngine):
             # Acceptable because Hermes only calls compress once per
             # turn; any real duplicate-routing pain surfaces in A2
             # dogfood and prompts a fix.
+
+    def _auto_package(self) -> None:
+        """Trigger packaging check after flushing messages.
+
+        This promotes inbox fragments into topic spaces when they
+        reach the clustering threshold. Without this, fragments
+        accumulate in the inbox forever unless someone manually
+        calls POST /packaging/check.
+        """
+        try:
+            self.client.check_packaging()
+        except (DaemonUnreachable, DaemonServerError):
+            # Non-fatal: if packaging fails we still have the inbox
+            # fragments and can try again next turn.
+            pass
 
     def _choose_space(self, focus_topic: Optional[str]) -> Optional[SpaceSummary]:
         """Pick the topic space to surface for this turn."""

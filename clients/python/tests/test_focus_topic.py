@@ -55,6 +55,9 @@ class RecordingClient:
         self.fetched_space_ids.append(space_id)
         return _topic_space(space_id, messages=[])
 
+    def check_packaging(self, **kwargs):
+        return []
+
     def close(self): ...
 
 

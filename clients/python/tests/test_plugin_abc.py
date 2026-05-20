@@ -55,7 +55,7 @@ def test_update_from_response_sets_token_counters():
     assert engine.last_total_tokens == 1500
 
 
-def test_should_compress_honors_threshold():
+def test_should_compress_always_returns_true():
     class FakeClient:
         def close(self): ...
 
@@ -63,6 +63,9 @@ def test_should_compress_honors_threshold():
         config={"compression_threshold_fraction": 0.5},
         client=FakeClient(),  # type: ignore[arg-type]
     )
+    # Doctor Chaos always returns True because it needs compress()
+    # called on every turn to route messages, regardless of token count.
     assert engine.should_compress(600, 1000) is True
-    assert engine.should_compress(400, 1000) is False
-    assert engine.should_compress(100, 0) is False
+    assert engine.should_compress(400, 1000) is True
+    assert engine.should_compress(100, 0) is True
+    assert engine.should_compress(0, 1000000) is True

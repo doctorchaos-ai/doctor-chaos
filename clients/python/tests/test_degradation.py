@@ -51,6 +51,9 @@ class UnreachableClient:
     def get_space(self, space_id: str):
         raise DaemonConnectionRefused("boom")
 
+    def check_packaging(self, **kwargs):
+        raise DaemonConnectionRefused("boom")
+
     def close(self): ...
 
 
@@ -77,6 +80,9 @@ class FlakyClient:
         self.get_calls += 1
         return make_topic_space(space_id)
 
+    def check_packaging(self, **kwargs):
+        return []
+
     def close(self): ...
 
 
@@ -94,6 +100,9 @@ class HappyClient:
 
     def get_space(self, space_id: str):
         return self.full[space_id]
+
+    def check_packaging(self, **kwargs):
+        return []
 
     def close(self): ...
 
@@ -148,6 +157,11 @@ def test_recovers_silently_on_next_success(caplog):
             if self.mode == "bad":
                 raise DaemonConnectionRefused("down")
             return happy.get_space(space_id)
+
+        def check_packaging(self, **kwargs):
+            if self.mode == "bad":
+                raise DaemonConnectionRefused("down")
+            return []
 
         def close(self): ...
 
