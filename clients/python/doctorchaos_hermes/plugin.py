@@ -128,7 +128,7 @@ class DoctorChaosContextEngine(_HermesContextEngine):
         self._config = dict(config)
         self.base_url = str(config.get("base_url", "http://127.0.0.1:18790"))
         self.tenant_id = str(config.get("tenant_id", "default"))
-        self.timeout = float(config.get("timeout", 10.0))
+        self.timeout = float(config.get("timeout", 120.0))
         self.threshold_fraction = float(
             config.get("compression_threshold_fraction", 0.75)
         )

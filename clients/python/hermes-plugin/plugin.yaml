@@ -1,0 +1,6 @@
+name: doctor-chaos
+version: 0.1.0-alpha.0
+description: |
+  Topic-bucketing context engine. Routes each message into a topic
+  space and returns per-topic history instead of linear truncation.
+  Requires the Doctor Chaos daemon running on localhost.
