@@ -60,7 +60,7 @@ export interface RoutingConfiguration {
  * have been validated against realistic conversation traces.
  */
 export const defaultRoutingConfiguration: RoutingConfiguration = {
-  confidenceThreshold: 0.6,
+  confidenceThreshold: 0.2,
   timeDecayHalfLifeSeconds: 7 * 24 * 60 * 60, // 7 days
   packagingDensityThreshold: 3,
   archiveInactivityDays: 30,

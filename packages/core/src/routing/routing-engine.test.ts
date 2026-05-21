@@ -14,6 +14,15 @@ function space(
   lastActivityDate: Date = NOW,
   status: TopicSpace['status'] = 'active',
 ): TopicSpace {
+  // Include a seed message containing the keywords so TF-IDF has
+  // content to build a document vector from. Real spaces always have
+  // at least one message (the one that created them).
+  const seedMsg: Message = {
+    id: `${id}-seed`,
+    role: 'user',
+    content: keywords.join(' ') + ' ' + name,
+    timestamp: lastActivityDate,
+  };
   return {
     id,
     name,
@@ -22,7 +31,7 @@ function space(
     lastActivityDate,
     creationSource: 'preset',
     status,
-    messages: [],
+    messages: [seedMsg],
   };
 }
 

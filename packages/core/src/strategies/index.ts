@@ -14,6 +14,10 @@ export {
   KeywordMatchingStrategy,
   NEW_TOPIC_MAX_EXISTING_SCORE,
 } from './keyword-matching-strategy.js';
+export {
+  TfIdfMatchingStrategy,
+  NEW_TOPIC_MAX_EXISTING_SCORE as TFIDF_NEW_TOPIC_MAX_EXISTING_SCORE,
+} from './tfidf-matching-strategy.js';
 export { KeywordClusteringStrategy } from './keyword-clustering-strategy.js';
 export { LLMRoutingStrategy, llmRouting } from './llm-routing-strategy.js';
 export type { LLMRoutingStrategyOptions } from './llm-routing-strategy.js';
