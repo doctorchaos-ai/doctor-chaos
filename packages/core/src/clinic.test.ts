@@ -13,6 +13,19 @@ function sequentialIds(prefix = 'id'): () => string {
 function space(
   overrides: Partial<TopicSpace> & Pick<TopicSpace, 'id' | 'name' | 'keywords'>,
 ): TopicSpace {
+  // Default to a seed message containing the keywords so TF-IDF has
+  // content to work with. Real spaces always have at least one message.
+  const defaultMessages =
+    overrides.keywords.length > 0
+      ? [
+          {
+            id: `${overrides.id}-seed`,
+            role: 'user' as const,
+            content: overrides.keywords.join(' ') + ' ' + overrides.name,
+            timestamp: overrides.lastActivityDate ?? new Date('2026-05-07'),
+          },
+        ]
+      : [];
   return {
     id: overrides.id,
     name: overrides.name,
@@ -21,7 +34,7 @@ function space(
     lastActivityDate: overrides.lastActivityDate ?? new Date('2026-05-07'),
     creationSource: overrides.creationSource ?? 'preset',
     status: overrides.status ?? 'active',
-    messages: overrides.messages ?? [],
+    messages: overrides.messages ?? defaultMessages,
   };
 }
 
@@ -35,6 +48,7 @@ describe('Clinic.send — routing into spaces', () => {
     const clinic = new Clinic({
       initialSpaces: [travel],
       idGenerator: sequentialIds('m'),
+      clock: () => new Date('2026-05-07T12:00:00Z'),
     });
     const result = await clinic.send({
       role: 'user',
@@ -44,7 +58,8 @@ describe('Clinic.send — routing into spaces', () => {
     if (result.destination === 'topicSpace') {
       expect(result.space.id).toBe('s-travel');
       expect(result.isNewSpace).toBe(false);
-      expect(result.space.messages).toHaveLength(1);
+      // Space has the seed message + the newly routed message.
+      expect(result.space.messages).toHaveLength(2);
     }
   });
 

@@ -9,7 +9,7 @@ import type {
   SignalDetecting,
   TimeDecayCalculating,
 } from '../strategies/interfaces.js';
-import { KeywordMatchingStrategy } from '../strategies/keyword-matching-strategy.js';
+import { TfIdfMatchingStrategy } from '../strategies/tfidf-matching-strategy.js';
 import { KeywordSignalDetector } from '../strategies/keyword-signal-detector.js';
 import type { Fragment } from '../types/fragment.js';
 import type { TopicSpace } from '../types/topic-space.js';
@@ -101,7 +101,7 @@ export class RoutingEngine {
   constructor(options: RoutingEngineOptions = {}) {
     this.configuration = options.configuration ?? defaultRoutingConfiguration;
     this.matchingStrategy =
-      options.matchingStrategy ?? new KeywordMatchingStrategy(this.configuration);
+      options.matchingStrategy ?? new TfIdfMatchingStrategy(this.configuration);
     this.signalDetector = options.signalDetector ?? new KeywordSignalDetector();
     this.timeDecay = options.timeDecay ?? new ExponentialTimeDecay(this.configuration);
     if (options.clusteringStrategy !== undefined) {
