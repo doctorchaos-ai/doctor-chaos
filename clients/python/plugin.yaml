@@ -1,0 +1,38 @@
+name: doctor-chaos
+version: 0.1.0-alpha.0
+description: |
+  Topic-bucketing context engine. Routes each message into a topic
+  space and, on compress, returns the history of the focused space
+  instead of a linear truncation. Composes with other context engines
+  via the ``sub_engine`` config key — Doctor Chaos picks the topic,
+  the sub-engine compresses within it.
+python_class: doctorchaos_hermes.plugin.DoctorChaosContextEngine
+config_schema:
+  base_url:
+    type: string
+    default: "http://127.0.0.1:18790"
+    description: URL of the Doctor Chaos daemon. Localhost only in alpha.
+  tenant_id:
+    type: string
+    default: "default"
+    description: Tenant id on the daemon. Alpha only supports 'default'.
+  timeout:
+    type: number
+    default: 10.0
+    description: HTTP request timeout in seconds.
+  compression_threshold_fraction:
+    type: number
+    default: 0.75
+    description: |
+      Fraction of the active model's context_length above which
+      ``should_compress`` returns true.
+  sub_engine:
+    type: string
+    default: null
+    description: |
+      Optional name of another installed Hermes context engine to
+      delegate within-space compression to (e.g. "lcm", "smart-context-engine").
+  max_5xx_retries:
+    type: integer
+    default: 2
+    description: Retry attempts when the daemon returns 5xx before falling back.

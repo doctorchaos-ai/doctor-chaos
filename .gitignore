@@ -68,3 +68,15 @@ temp/
 # Temporary files used when passing multi-line commit messages via `git commit -F`
 .commit-msg.tmp
 *.commit-msg.tmp
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.venv/
+venv/
+env/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/

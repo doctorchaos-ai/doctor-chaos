@@ -1,0 +1,74 @@
+{
+  "name": "@doctorchaos-ai/server",
+  "version": "0.1.0-alpha.0",
+  "description": "Doctor Chaos HTTP daemon — wraps @doctorchaos-ai/core's Clinic as a localhost HTTP service so non-TypeScript agents (Hermes, etc.) can drive topic routing through thin language clients.",
+  "keywords": [
+    "ai",
+    "doctor-chaos",
+    "daemon",
+    "server",
+    "http",
+    "routing",
+    "topic",
+    "conversation"
+  ],
+  "author": "Chaos <chaosxinglong@gmail.com>",
+  "license": "MIT",
+  "homepage": "https://github.com/doctorchaos-ai/doctor-chaos",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/doctorchaos-ai/doctor-chaos.git",
+    "directory": "packages/server"
+  },
+  "bugs": {
+    "url": "https://github.com/doctorchaos-ai/doctor-chaos/issues"
+  },
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    }
+  },
+  "bin": {
+    "doctor-chaos-server": "./dist/cli.cjs"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "start": "node ./dist/cli.cjs start",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit",
+    "lint": "echo \"No lint configured yet\" && exit 0",
+    "clean": "rm -rf dist"
+  },
+  "peerDependencies": {
+    "@doctorchaos-ai/core": "workspace:*"
+  },
+  "dependencies": {
+    "hono": "^4.6.14",
+    "@hono/node-server": "^1.13.7"
+  },
+  "devDependencies": {
+    "@doctorchaos-ai/core": "workspace:*",
+    "@types/node": "^22.10.2",
+    "tsup": "^8.3.5",
+    "vitest": "^2.1.8"
+  }
+}

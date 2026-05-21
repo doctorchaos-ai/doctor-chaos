@@ -1,0 +1,51 @@
+[build-system]
+requires = ["hatchling>=1.18"]
+build-backend = "hatchling.build"
+
+[project]
+name = "doctorchaos-hermes"
+version = "0.1.0a0"
+description = "Python client for the Doctor Chaos HTTP daemon and a conforming Hermes ContextEngine plugin."
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "MIT" }
+authors = [{ name = "Chaos", email = "chaosxinglong@gmail.com" }]
+keywords = [
+    "ai",
+    "doctor-chaos",
+    "hermes",
+    "context-engine",
+    "topic-routing",
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+]
+dependencies = [
+    "httpx>=0.25,<1.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.4",
+    "pytest-httpx>=0.30",
+]
+
+[project.urls]
+Homepage = "https://github.com/doctorchaos-ai/doctor-chaos"
+Repository = "https://github.com/doctorchaos-ai/doctor-chaos"
+Issues = "https://github.com/doctorchaos-ai/doctor-chaos/issues"
+
+[tool.hatch.build.targets.wheel]
+packages = ["doctorchaos_hermes"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
