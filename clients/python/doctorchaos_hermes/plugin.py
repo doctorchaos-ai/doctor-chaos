@@ -55,7 +55,7 @@ except ImportError:
         def update_from_response(self, usage: Mapping[str, Any]) -> None:
             raise NotImplementedError
 
-        def should_compress(self, prompt_tokens: int, context_length: int) -> bool:
+        def should_compress(self, prompt_tokens: int = 0, context_length: int = 0) -> bool:
             raise NotImplementedError
 
         def compress(
@@ -179,15 +179,15 @@ class DoctorChaosContextEngine(_HermesContextEngine):
         if self.sub_engine is not None:
             self.sub_engine.update_from_response(usage)
 
-    def should_compress(self, prompt_tokens: int, context_length: int) -> bool:
+    def should_compress(self, prompt_tokens: int = 0, context_length: int = 0) -> bool:
         # Doctor Chaos needs compress() called on EVERY turn to route
         # messages into topic spaces, regardless of whether the context
         # window is "full". Without this, _flush_unrouted() never fires
         # and the daemon never sees any messages.
         #
-        # The original design gated on threshold_fraction, which made
-        # sense for a pure compression engine but is wrong for a routing
-        # engine that must see every message to do its job.
+        # Hermes's built-in ContextCompressor uses the signature
+        # should_compress(self, prompt_tokens) with only 1 arg.
+        # We accept both signatures by making both params optional.
         return True
 
     def compress(
