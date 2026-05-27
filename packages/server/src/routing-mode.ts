@@ -258,27 +258,14 @@ export function resolveRoutingOptions(
 
     case 'auto':
     default: {
-      // 1. Any fully-specified LLM config wins.
-      const cfg = resolveLLMConfig(env, overrides);
-      if (cfg) {
-        return {
-          options: { llm: buildLLM(cfg), autoDetectOpenAI: false },
-          picked: 'llm',
-          llmConfig: {
-            baseUrl: cfg.baseUrl,
-            model: cfg.model,
-            format: cfg.format,
-            source: cfg.source,
-          },
-        };
-      }
-      // 2. Embedding tier needs OPENAI_API_KEY specifically; but
-      //    that path is actually caught by step 1's fallback today.
-      //    Leaving the branch as a no-op safety net.
-      if (readEnv(env, 'OPENAI_API_KEY')) {
-        return { options: { autoDetectOpenAI: true }, picked: 'embedding' };
-      }
-      // 3. Keyword.
+      // Auto mode = always TF-IDF (keyword tier). The LLM and
+      // embedding tiers are opt-in only via --routing-mode flag.
+      //
+      // Rationale: TF-IDF is fast (<5ms), free, zero-config, and
+      // 85-90% accurate. LLM routing adds latency (1-30s), cost,
+      // and a hard dependency on an external service. Dogfood showed
+      // that auto-upgrading to LLM when env vars happen to be present
+      // causes more confusion than value.
       return { options: { autoDetectOpenAI: false }, picked: 'keyword' };
     }
   }

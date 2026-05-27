@@ -16,8 +16,27 @@ import { resolveRoutingOptions } from './routing-mode.js';
  */
 
 describe('resolveRoutingOptions — explicit DOCTOR_CHAOS_LLM_*', () => {
-  it('auto: activates LLM tier when base_url + api_key are both set', () => {
+  it('auto: always picks keyword tier regardless of env vars', () => {
     const r = resolveRoutingOptions('auto', {
+      DOCTOR_CHAOS_LLM_BASE_URL: 'https://api.deepseek.com/v1',
+      DOCTOR_CHAOS_LLM_API_KEY: 'sk-x',
+      DOCTOR_CHAOS_LLM_MODEL: 'deepseek-chat',
+    });
+    expect(r.picked).toBe('keyword');
+    expect(r.options.llm).toBeUndefined();
+    expect(r.options.autoDetectOpenAI).toBe(false);
+  });
+
+  it('auto: ignores OPENAI_API_KEY too', () => {
+    const r = resolveRoutingOptions('auto', { OPENAI_API_KEY: 'sk-x' });
+    expect(r.picked).toBe('keyword');
+    expect(r.options.autoDetectOpenAI).toBe(false);
+  });
+});
+
+describe('resolveRoutingOptions — explicit llm mode still works', () => {
+  it('llm mode: activates when base_url + api_key are set', () => {
+    const r = resolveRoutingOptions('llm', {
       DOCTOR_CHAOS_LLM_BASE_URL: 'https://api.deepseek.com/v1',
       DOCTOR_CHAOS_LLM_API_KEY: 'sk-x',
       DOCTOR_CHAOS_LLM_MODEL: 'deepseek-chat',
@@ -25,21 +44,19 @@ describe('resolveRoutingOptions — explicit DOCTOR_CHAOS_LLM_*', () => {
     expect(r.picked).toBe('llm');
     expect(r.llmConfig?.baseUrl).toBe('https://api.deepseek.com/v1');
     expect(r.llmConfig?.model).toBe('deepseek-chat');
-    expect(r.llmConfig?.format).toBe('openai-compat');
-    expect(r.llmConfig?.source).toBe('explicit');
     expect(r.options.llm).toBeTypeOf('function');
   });
 
-  it('strips trailing slashes from base_url', () => {
-    const r = resolveRoutingOptions('auto', {
+  it('llm mode: strips trailing slashes from base_url', () => {
+    const r = resolveRoutingOptions('llm', {
       DOCTOR_CHAOS_LLM_BASE_URL: 'https://api.example.com/v1/',
       DOCTOR_CHAOS_LLM_API_KEY: 'sk-x',
     });
     expect(r.llmConfig?.baseUrl).toBe('https://api.example.com/v1');
   });
 
-  it('honours DOCTOR_CHAOS_LLM_FORMAT=anthropic', () => {
-    const r = resolveRoutingOptions('auto', {
+  it('llm mode: honours DOCTOR_CHAOS_LLM_FORMAT=anthropic', () => {
+    const r = resolveRoutingOptions('llm', {
       DOCTOR_CHAOS_LLM_BASE_URL: 'https://api.anthropic.com/v1',
       DOCTOR_CHAOS_LLM_API_KEY: 'sk-ant',
       DOCTOR_CHAOS_LLM_MODEL: 'claude-3-5-haiku-20241022',
@@ -49,43 +66,23 @@ describe('resolveRoutingOptions — explicit DOCTOR_CHAOS_LLM_*', () => {
     expect(r.llmConfig?.format).toBe('anthropic');
   });
 
-  it('unknown DOCTOR_CHAOS_LLM_FORMAT values silently become openai-compat', () => {
-    const r = resolveRoutingOptions('auto', {
-      DOCTOR_CHAOS_LLM_BASE_URL: 'https://x/v1',
-      DOCTOR_CHAOS_LLM_API_KEY: 'sk-x',
-      DOCTOR_CHAOS_LLM_FORMAT: 'not-real',
-    });
-    expect(r.llmConfig?.format).toBe('openai-compat');
+  it('llm mode: falls back to keyword when no config', () => {
+    const r = resolveRoutingOptions('llm', {});
+    expect(r.picked).toBe('keyword');
   });
 
-  it('missing base_url or api_key forces fallback path', () => {
-    const onlyUrl = resolveRoutingOptions('auto', {
-      DOCTOR_CHAOS_LLM_BASE_URL: 'https://x/v1',
-    });
-    expect(onlyUrl.picked).toBe('keyword');
-    const onlyKey = resolveRoutingOptions('auto', {
-      DOCTOR_CHAOS_LLM_API_KEY: 'sk-x',
-    });
-    expect(onlyKey.picked).toBe('keyword');
+  it('llm mode: OPENAI_API_KEY fallback still works', () => {
+    const r = resolveRoutingOptions('llm', { OPENAI_API_KEY: 'sk-x' });
+    expect(r.picked).toBe('llm');
+    expect(r.llmConfig?.source).toBe('openai-fallback');
   });
 
-  it('default model is gpt-4o-mini when DOCTOR_CHAOS_LLM_MODEL is unset', () => {
-    const r = resolveRoutingOptions('auto', {
-      DOCTOR_CHAOS_LLM_BASE_URL: 'https://x/v1',
-      DOCTOR_CHAOS_LLM_API_KEY: 'sk-x',
-    });
-    expect(r.llmConfig?.model).toBe('gpt-4o-mini');
-  });
-});
-
-describe('resolveRoutingOptions — CLI overrides beat env', () => {
-  it('applies CLI baseUrl/apiKey/model/format over env', () => {
+  it('llm mode: CLI overrides beat env', () => {
     const r = resolveRoutingOptions(
-      'auto',
+      'llm',
       {
         DOCTOR_CHAOS_LLM_BASE_URL: 'https://env-url/v1',
         DOCTOR_CHAOS_LLM_API_KEY: 'env-key',
-        DOCTOR_CHAOS_LLM_MODEL: 'env-model',
       },
       {
         baseUrl: 'https://cli-url/v1',
@@ -98,46 +95,32 @@ describe('resolveRoutingOptions — CLI overrides beat env', () => {
     expect(r.llmConfig?.model).toBe('cli-model');
     expect(r.llmConfig?.format).toBe('anthropic');
   });
-
-  it('CLI alone (no env) also activates the LLM tier', () => {
-    const r = resolveRoutingOptions(
-      'auto',
-      {},
-      { baseUrl: 'https://cli/v1', apiKey: 'k' },
-    );
-    expect(r.picked).toBe('llm');
-    expect(r.llmConfig?.source).toBe('explicit');
-  });
 });
 
-describe('resolveRoutingOptions — OpenAI-only fallback', () => {
-  it('auto: OPENAI_API_KEY alone activates LLM via the compat fallback', () => {
+describe('resolveRoutingOptions — OpenAI-only fallback removed', () => {
+  it('auto: OPENAI_API_KEY alone does NOT activate LLM anymore', () => {
     const r = resolveRoutingOptions('auto', { OPENAI_API_KEY: 'sk-x' });
-    expect(r.picked).toBe('llm');
-    expect(r.llmConfig?.source).toBe('openai-fallback');
-    expect(r.llmConfig?.baseUrl).toBe('https://api.openai.com/v1');
-    expect(r.llmConfig?.model).toBe('gpt-4o-mini');
-    expect(r.llmConfig?.format).toBe('openai-compat');
+    expect(r.picked).toBe('keyword');
+    expect(r.llmConfig).toBeUndefined();
+    expect(r.options.autoDetectOpenAI).toBe(false);
   });
 
-  it('OPENAI_BASE_URL and OPENAI_MODEL override fallback defaults', () => {
+  it('auto: OPENAI_BASE_URL and OPENAI_MODEL are ignored in auto mode', () => {
     const r = resolveRoutingOptions('auto', {
       OPENAI_API_KEY: 'sk-x',
       OPENAI_BASE_URL: 'https://proxy/v1',
       OPENAI_MODEL: 'some-proxy-model',
     });
-    expect(r.llmConfig?.baseUrl).toBe('https://proxy/v1');
-    expect(r.llmConfig?.model).toBe('some-proxy-model');
+    expect(r.picked).toBe('keyword');
   });
 
-  it('DOCTOR_CHAOS_LLM_* wins when both it and OPENAI_API_KEY are set', () => {
+  it('DOCTOR_CHAOS_LLM_* is ignored in auto mode too', () => {
     const r = resolveRoutingOptions('auto', {
       DOCTOR_CHAOS_LLM_BASE_URL: 'https://explicit/v1',
       DOCTOR_CHAOS_LLM_API_KEY: 'explicit-key',
       OPENAI_API_KEY: 'openai-key',
     });
-    expect(r.llmConfig?.source).toBe('explicit');
-    expect(r.llmConfig?.baseUrl).toBe('https://explicit/v1');
+    expect(r.picked).toBe('keyword');
   });
 });
 
