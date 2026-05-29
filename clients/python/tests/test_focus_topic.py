@@ -4,7 +4,7 @@ from datetime import datetime, timedelta, timezone
 from typing import List
 
 from doctorchaos_hermes import DoctorChaosContextEngine
-from doctorchaos_hermes.types import SpaceSummary, TopicSpace, Message
+from doctorchaos_hermes.types import HealthStatus, SpaceSummary, TopicSpace, Message
 
 
 def _space_summary(
@@ -44,6 +44,9 @@ class RecordingClient:
     def __init__(self, spaces: List[SpaceSummary]) -> None:
         self.spaces = spaces
         self.fetched_space_ids: List[str] = []
+
+    def health(self):
+        return HealthStatus(status="ok", version="0.1.0a1")
 
     def send_message(self, **kwargs):
         pass

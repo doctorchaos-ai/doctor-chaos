@@ -111,3 +111,31 @@ python -m venv .venv
 2. **类型化异常优于状态码**。调用方永远不需要自己解析 HTTP。
 3. **idempotency key 默认生成**。naive 的 try/retry 就是安全的。
 4. **降级静默恢复**。一次出问题打一次 warning，回到可达状态不打日志。
+
+## Daemon 不可达时的行为
+
+dogfood 第 7 次迭代发现：早期版本把 `should_compress` 写死返 True，目的是让 daemon 每个 turn 都能收到消息。结果 daemon 挂了的时候 Hermes 误以为该压缩，按它内置的激进阈值（20K-40K tokens）压一个本来有 1M 上下文窗口的对话。体验比完全不装 Doctor Chaos 还差。
+
+Req 12 把这件事修了。现在的行为：
+
+- **daemon 挂了或没启动**：插件 `should_compress` 返回 False，让 Hermes 完全沿用它内置的压缩判定。插件不会替 Hermes 决定该不该压缩，"装上 Doctor Chaos 永远不比不装更糟"。
+- **daemon 可达**：按 `compression_threshold_fraction`（默认 0.75）和当前 model 的 `context_length` 计算阈值。`prompt_tokens >= fraction * context_length` 时才返回 True，触发 Doctor Chaos 走话题空间历史。
+- **路由发送到 daemon 走背景队列**：每次 Hermes 调任何生命周期钩子（`compress` / `update_from_response` / `on_session_*`），插件都顺手 flush 一次队列。daemon 不可达时消息留在队列里，恢复后下一个钩子调用时自动补送，用同一个 `idempotency_key` 不会重复路由。
+- **可达性缓存**：插件用一个心跳缓存避免每次 `should_compress` 都同步打 daemon。可通过 `health_check_interval`（默认 30 秒）调整探测频率。0 表示每次都探测，适合测试。
+
+队列上限 1000 条，超过时按 FIFO 丢最早的（极少触发，dogfood 一周内还没遇到过）。
+
+## 当前进度（2026-05-29 更新）
+
+**Solution A 已冻结，转向 Solution B（Hermes 上游 RFC）**。
+
+经过 7 次 dogfood 迭代后，得出的判断是：在 Hermes 当前 ContextEngine ABC 下，无法实现 Doctor Chaos 的核心愿景——"消息进来时，先决定它属于哪个话题空间，再用那个空间的历史作为上下文"。当前 ABC 把"上下文选择"和"上下文压缩"压在同一个 `compress()` 钩子上，强迫路由作为压缩的副作用发生，结果是路由永远滞后于压缩一拍。
+
+我们尝试过的所有 in-plugin workaround（包括最初的"`should_compress` 永远返 True"以及现在的"机会式 flush + 心跳缓存"）都只能解决"装了不能比不装更糟"这条产品红线，无法做到"路由先于压缩"这条产品愿景。
+
+下一步：向 Hermes 上游提 RFC，提议把 `select_context()` 从 `compress()` 拆出来。规划文档见 `对话入口范式-开源项目/Hermes-RFC-规划.md`。
+
+在 RFC 有结果之前：
+- 这个插件保持当前形态，是已经装机用户的兜底
+- 不再继续 dogfood、不再补 Solution A 相关测试、不再升级 Solution A 相关功能
+- 任何 Solution A 范畴的 bug 报告，回复"已知限制，等 Solution B"
