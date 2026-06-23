@@ -1,0 +1,71 @@
+{
+  "name": "@doctorchaos-ai/openclaw",
+  "version": "0.1.0-alpha.0",
+  "description": "Doctor Chaos as an OpenClaw ContextEngine plugin — routes each turn to its topic space and assembles that space's history as the model context. In-process wrapper around @doctorchaos-ai/core (no daemon).",
+  "keywords": [
+    "ai",
+    "doctor-chaos",
+    "openclaw",
+    "context-engine",
+    "plugin",
+    "routing",
+    "topic",
+    "conversation"
+  ],
+  "author": "Chaos <chaosxinglong@gmail.com>",
+  "license": "MIT",
+  "homepage": "https://github.com/doctorchaos-ai/doctor-chaos",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/doctorchaos-ai/doctor-chaos.git",
+    "directory": "packages/openclaw"
+  },
+  "bugs": {
+    "url": "https://github.com/doctorchaos-ai/doctor-chaos/issues"
+  },
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "openclaw": {
+    "extensions": ["./src/index.ts"],
+    "runtimeExtensions": ["./dist/index.js"]
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    }
+  },
+  "files": [
+    "dist",
+    "openclaw.plugin.json",
+    "README.md",
+    "LICENSE"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit",
+    "lint": "echo \"No lint configured yet\" && exit 0",
+    "clean": "rm -rf dist"
+  },
+  "peerDependencies": {
+    "@doctorchaos-ai/core": "workspace:*"
+  },
+  "devDependencies": {
+    "@doctorchaos-ai/core": "workspace:*",
+    "@types/node": "^22.10.2",
+    "tsup": "^8.3.5",
+    "vitest": "^2.1.8"
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "id": "doctor-chaos",
+  "name": "Doctor Chaos",
+  "description": "Topic-routing context engine — assembles each turn from its topic space instead of the whole linear transcript.",
+  "version": "0.1.0-alpha.0",
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {}
+  }
+}
