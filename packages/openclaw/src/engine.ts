@@ -1,23 +1,31 @@
 /**
  * DoctorChaosContextEngine — Doctor Chaos as an OpenClaw context engine.
  *
- * v0.1 scope (this file grows across tasks 2–7):
- *  - Task 1 (now): hello-world skeleton — implements the 4 required methods
- *    with SAFE no-op / pass-through behavior so OpenClaw can load and run the
- *    engine without any behavior change. This is the load-bearing checkpoint
- *    (see spec task 1.2): prove the plugin loads before adding routing logic.
- *  - Task 2–3: message mapping + persistence.
- *  - Task 4: real `ingest` → clinic.send routing.
- *  - Task 5: real `assemble` → topic-space selection.
+ * v0.1 behavior:
+ *  - ingest      → route the message into its topic space (clinic.send).
+ *  - assemble    → select the relevant space and return its history (trimmed
+ *                  to budget) as this turn's context; pass-through when there
+ *                  is no space yet or on any error.
+ *  - compact     → no-op (Doctor Chaos bounds context via topic assembly).
+ *  - afterTurn   → opportunistic packaging/lifecycle maintenance + persist.
+ *  - bootstrap   → warm the per-session Clinic from disk.
  *
- * Design invariants (already enforced in the skeleton):
- *  - fail-open: never throw into the OpenClaw runtime.
- *  - assemble pass-through when uncertain (no-worse-than-default).
+ * Invariants:
+ *  - fail-open: no method throws into the OpenClaw runtime (Req 7).
+ *  - assemble pass-through preserves no-worse-than-default (Req 3.4/3.5).
+ *  - one Clinic per sessionId, persisted under ~/.doctorchaos/openclaw/.
+ *
+ * core (@doctorchaos-ai/core) is bundled into this plugin's dist, so no
+ * separate core install is needed on the host.
  */
 
+import { Clinic } from '@doctorchaos-ai/core';
 import type {
+  AfterTurnParams,
   AssembleParams,
   AssembleResult,
+  BootstrapParams,
+  BootstrapResult,
   CompactParams,
   CompactResult,
   ContextEngine,
@@ -26,12 +34,23 @@ import type {
   IngestParams,
   IngestResult,
 } from './openclaw-types.js';
+import { toClinicInput } from './message-mapping.js';
+import { assembleContext } from './assemble.js';
+import { loadState, saveState, sessionSnapshotPath } from './persistence.js';
+import { createLogger, type PluginLogger } from './logging.js';
 
 export const ENGINE_ID = 'doctor-chaos';
 
 export class DoctorChaosContextEngine implements ContextEngine {
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  constructor(private readonly factoryCtx: ContextEngineFactoryContext = {}) {}
+  private readonly clinics = new Map<string, Promise<Clinic>>();
+  private readonly logger: PluginLogger;
+
+  constructor(
+    private readonly factoryCtx: ContextEngineFactoryContext = {},
+    logger?: PluginLogger,
+  ) {
+    this.logger = logger ?? createLogger();
+  }
 
   readonly info: ContextEngineInfo = {
     id: ENGINE_ID,
@@ -39,35 +58,117 @@ export class DoctorChaosContextEngine implements ContextEngine {
     ownsCompaction: true,
   };
 
-  /**
-   * Route a message into its topic space. Task 1 skeleton: no-op.
-   * Real routing (clinic.send) lands in task 4.
-   */
-  async ingest(_params: IngestParams): Promise<IngestResult> {
-    return { ingested: false };
+  async bootstrap(params: BootstrapParams): Promise<BootstrapResult> {
+    try {
+      await this.ensureClinic(params.sessionId);
+      return { bootstrapped: true };
+    } catch (err) {
+      this.logger.warn('bootstrap failed; starting empty', err);
+      return { bootstrapped: false, reason: 'load failed' };
+    }
   }
 
-  /**
-   * Select the context for this request. Task 1 skeleton: pass-through —
-   * return exactly what the host assembled, so installing the engine is a
-   * no-op until task 5 wires topic-space selection.
-   */
+  async ingest(params: IngestParams): Promise<IngestResult> {
+    try {
+      const input = toClinicInput(params.message);
+      if (input === null) return { ingested: false };
+      const clinic = await this.ensureClinic(params.sessionId);
+      await clinic.send(input);
+      await this.save(params.sessionId, clinic);
+      this.logger.recover(`ingest:${params.sessionId}`);
+      return { ingested: true };
+    } catch (err) {
+      this.logger.warnOnce(`ingest:${params.sessionId}`, 'ingest failed; skipping', err);
+      return { ingested: false };
+    }
+  }
+
   async assemble(params: AssembleParams): Promise<AssembleResult> {
-    return {
-      messages: params.messages,
-      estimatedTokens: 0,
-    };
+    try {
+      const clinic = await this.ensureClinic(params.sessionId);
+      const result = assembleContext(
+        clinic.spaces(),
+        params.prompt,
+        params.messages,
+        params.tokenBudget,
+      );
+      this.logger.recover(`assemble:${params.sessionId}`);
+      return result;
+    } catch (err) {
+      this.logger.warnOnce(
+        `assemble:${params.sessionId}`,
+        'assemble failed; passing through host messages',
+        err,
+      );
+      // no-worse-than-default: hand back exactly what the host assembled.
+      return { messages: params.messages, estimatedTokens: 0 };
+    }
   }
 
-  /**
-   * Compaction. Doctor Chaos bounds context via topic assembly rather than
-   * summarization, so this is intentionally a no-op (see spec Req 4).
-   */
   async compact(_params: CompactParams): Promise<CompactResult> {
     return {
       ok: true,
       compacted: false,
       reason: 'doctor-chaos bounds context via topic assembly',
     };
+  }
+
+  async afterTurn(params: AfterTurnParams): Promise<void> {
+    try {
+      const clinic = await this.ensureClinic(params.sessionId);
+      await clinic.checkPackaging();
+      await clinic.checkLifecycle();
+      await this.save(params.sessionId, clinic);
+    } catch (err) {
+      this.logger.warnOnce(
+        `afterTurn:${params.sessionId}`,
+        'afterTurn maintenance failed',
+        err,
+      );
+    }
+  }
+
+  // ─── internals ──────────────────────────────────────────────────────
+
+  private ensureClinic(sessionId: string): Promise<Clinic> {
+    const existing = this.clinics.get(sessionId);
+    if (existing) return existing;
+    const created = this.loadClinic(sessionId);
+    this.clinics.set(sessionId, created);
+    return created;
+  }
+
+  private async loadClinic(sessionId: string): Promise<Clinic> {
+    const path = sessionSnapshotPath(sessionId);
+    let state = null;
+    try {
+      state = await loadState(path);
+      this.logger.recover(`load:${sessionId}`);
+    } catch (err) {
+      // Malformed snapshot — start empty rather than crash (Req 8.3).
+      this.logger.warnOnce(`load:${sessionId}`, 'snapshot unreadable; starting empty', err);
+      state = null;
+    }
+    if (state === null) {
+      return new Clinic({ autoDetectOpenAI: false });
+    }
+    return new Clinic({
+      initialSpaces: state.spaces,
+      initialInbox: state.inbox,
+      autoDetectOpenAI: false,
+    });
+  }
+
+  private async save(sessionId: string, clinic: Clinic): Promise<void> {
+    try {
+      const snap = clinic.snapshot();
+      await saveState(sessionSnapshotPath(sessionId), {
+        spaces: [...snap.spaces],
+        inbox: snap.inbox,
+      });
+      this.logger.recover(`save:${sessionId}`);
+    } catch (err) {
+      this.logger.warnOnce(`save:${sessionId}`, 'failed to persist snapshot', err);
+    }
   }
 }

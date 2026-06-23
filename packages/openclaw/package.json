@@ -59,9 +59,7 @@
     "lint": "echo \"No lint configured yet\" && exit 0",
     "clean": "rm -rf dist"
   },
-  "peerDependencies": {
-    "@doctorchaos-ai/core": "workspace:*"
-  },
+  "peerDependencies": {},
   "devDependencies": {
     "@doctorchaos-ai/core": "workspace:*",
     "@types/node": "^22.10.2",

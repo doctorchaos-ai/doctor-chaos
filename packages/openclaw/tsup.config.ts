@@ -11,7 +11,9 @@ export default defineConfig({
   treeshake: true,
   target: 'es2022',
   outDir: 'dist',
-  // core is resolved in-process at runtime; the OpenClaw plugin SDK is
-  // provided by the host runtime. Neither is bundled into the plugin.
-  external: ['@doctorchaos-ai/core', /^openclaw(\/|$)/],
+  // The OpenClaw plugin SDK is provided by the host runtime (external).
+  // @doctorchaos-ai/core is bundled INTO the plugin (noExternal) so the
+  // packed/installed plugin is self-contained — no separate core install.
+  external: [/^openclaw(\/|$)/],
+  noExternal: ['@doctorchaos-ai/core'],
 });
