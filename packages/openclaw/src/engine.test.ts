@@ -95,15 +95,48 @@ describe('DoctorChaosContextEngine', () => {
       ...state!.inbox.fragments.flatMap((f) => f.messages.map((m) => m.content)),
     ];
     expect(texts).toContain('persist me');
+  });
 
-    // A fresh engine instance loads that state without error.
-    const e2 = engine();
-    const res = await e2.assemble({
+  it('afterTurn ingests new messages (the real OpenClaw path) and persists them', async () => {
+    const e = engine();
+    const sid = 's-afterturn';
+    // Simulate OpenClaw's finalizer: full snapshot + prePromptMessageCount.
+    await e.afterTurn({
       sessionId: sid,
-      messages: [{ role: 'user', content: 'x' }],
-      prompt: 'persist',
-      tokenBudget: 100000,
+      messages: [
+        { role: 'user', content: 'tell me about pokemon' },
+        { role: 'assistant', content: 'sure, pokemon are creatures' },
+      ],
+      prePromptMessageCount: 0,
     });
-    expect(Array.isArray(res.messages)).toBe(true);
+
+    const state = await loadState(sessionSnapshotPath(sid));
+    expect(state).not.toBeNull();
+    const texts = [
+      ...state!.spaces.flatMap((s) => s.messages.map((m) => m.content)),
+      ...state!.inbox.fragments.flatMap((f) => f.messages.map((m) => m.content)),
+    ];
+    expect(texts).toContain('tell me about pokemon');
+    expect(texts).toContain('sure, pokemon are creatures');
+  });
+
+  it('afterTurn only ingests the tail after prePromptMessageCount', async () => {
+    const e = engine();
+    const sid = 's-afterturn-tail';
+    await e.afterTurn({
+      sessionId: sid,
+      messages: [
+        { role: 'user', content: 'OLD already-ingested' },
+        { role: 'user', content: 'NEW this turn' },
+      ],
+      prePromptMessageCount: 1, // first message was already present pre-prompt
+    });
+    const state = await loadState(sessionSnapshotPath(sid));
+    const texts = [
+      ...state!.spaces.flatMap((s) => s.messages.map((m) => m.content)),
+      ...state!.inbox.fragments.flatMap((f) => f.messages.map((m) => m.content)),
+    ];
+    expect(texts).toContain('NEW this turn');
+    expect(texts).not.toContain('OLD already-ingested');
   });
 });

@@ -116,9 +116,25 @@ export class DoctorChaosContextEngine implements ContextEngine {
   async afterTurn(params: AfterTurnParams): Promise<void> {
     try {
       const clinic = await this.ensureClinic(params.sessionId);
+
+      // Contract note: OpenClaw's turn finalizer is an if/else —
+      //   if (engine.afterTurn) afterTurn(...)  else  ingest/ingestBatch(...)
+      // Because we implement afterTurn, the host does NOT call ingest(); the
+      // engine owns ingestion here. New messages this turn are the tail of the
+      // snapshot after prePromptMessageCount.
+      const start = params.prePromptMessageCount ?? 0;
+      const newMessages = params.messages.slice(start);
+      for (const m of newMessages) {
+        // Route conversational turns only; skip tool/system noise.
+        if (m.role !== 'user' && m.role !== 'assistant') continue;
+        const input = toClinicInput(m);
+        if (input !== null) await clinic.send(input);
+      }
+
       await clinic.checkPackaging();
       await clinic.checkLifecycle();
       await this.save(params.sessionId, clinic);
+      this.logger.recover(`afterTurn:${params.sessionId}`);
     } catch (err) {
       this.logger.warnOnce(
         `afterTurn:${params.sessionId}`,
