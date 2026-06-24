@@ -4,6 +4,7 @@ import {
   extractText,
   toClinicInput,
   toAgentMessage,
+  stripConversationWrapper,
 } from './message-mapping.js';
 
 describe('toClinicRole', () => {
@@ -69,6 +70,54 @@ describe('toClinicInput', () => {
   it('returns null when there is no routable text', () => {
     expect(toClinicInput({ role: 'user', content: '' })).toBeNull();
     expect(toClinicInput({ role: 'tool', content: [{ type: 'image_url' }] })).toBeNull();
+  });
+});
+
+describe('stripConversationWrapper', () => {
+  const wrapped = [
+    'Conversation info (untrusted metadata):',
+    '```json',
+    '{ "chat_id": "telegram:8559436688", "message_id": "83" }',
+    '```',
+    '',
+    'Sender (untrusted metadata):',
+    '```json',
+    '{ "name": "chaos xue" }',
+    '```',
+    '',
+    'Conversation context (untrusted, chronological, selected for current message):',
+    '#82 Tue 2026-06-23 20:46:01 GMT+8 OpenClaw: 晚上好',
+    '#83 Wed 2026-06-24 09:59:48 GMT+8 chaos xue: 还在吗',
+    '',
+    '为什么超梦这么火',
+  ].join('\n');
+
+  it('keeps only the trailing real utterance', () => {
+    expect(stripConversationWrapper(wrapped)).toBe('为什么超梦这么火');
+  });
+
+  it('returns text unchanged when no wrapper marker is present', () => {
+    expect(stripConversationWrapper('just a normal message')).toBe('just a normal message');
+  });
+
+  it('falls back to original when extraction would be empty', () => {
+    const noTail = [
+      'Conversation context (untrusted, chronological, selected for current message):',
+      '#1 ... chaos: hi',
+    ].join('\n');
+    // No trailing message after the entry -> keep original (don't lose content).
+    expect(stripConversationWrapper(noTail)).toBe(noTail);
+  });
+});
+
+describe('toClinicInput with wrapper', () => {
+  it('routes on the clean utterance, not the metadata blob', () => {
+    const wrapped =
+      'Conversation info (untrusted metadata):\n```json\n{"chat_id":"x"}\n```\n\n' +
+      'Conversation context (untrusted, chronological, selected for current message):\n' +
+      '#1 a: old\n\n人气最高的宝可梦是谁';
+    const input = toClinicInput({ role: 'user', content: wrapped });
+    expect(input).toEqual({ role: 'user', content: '人气最高的宝可梦是谁' });
   });
 });
 

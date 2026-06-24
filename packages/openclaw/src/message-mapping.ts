@@ -61,13 +61,54 @@ export function extractText(content: unknown): string | null {
 }
 
 /**
+ * Strip OpenClaw's per-turn wrapper so routing/storage use the actual user
+ * utterance, not the injected metadata + replayed conversation history.
+ *
+ * OpenClaw wraps each message like:
+ *   Conversation info (untrusted metadata):
+ *   ```json { ... } ```
+ *   Sender (untrusted metadata):
+ *   ```json { ... } ```
+ *   Conversation context (untrusted, chronological, selected for current message):
+ *   #83 ... chaos xue: ...
+ *   #84 ... OpenClaw: ...
+ *
+ *   <the actual new message>
+ *
+ * Routing on the whole blob pollutes keywords (chat_id, timestamps, replayed
+ * history) and makes every message look unique. We keep only the trailing
+ * utterance after the context block. Falls back to the original text when the
+ * wrapper isn't detected or extraction would be empty.
+ */
+export function stripConversationWrapper(text: string): string {
+  const marker = 'Conversation context (untrusted';
+  const idx = text.lastIndexOf(marker);
+  if (idx === -1) return text;
+
+  const lines = text.slice(idx).split('\n');
+  // Find the last replayed context entry line ("#<n> ... : ...").
+  let lastEntry = -1;
+  for (let i = 1; i < lines.length; i++) {
+    if (/^#\d+\b/.test(lines[i]!.trim())) lastEntry = i;
+  }
+  const tail =
+    lastEntry === -1
+      ? lines.slice(1).join('\n') // no entries: everything after the header
+      : lines.slice(lastEntry + 1).join('\n'); // after the last replayed entry
+  const cleaned = tail.trim();
+  return cleaned.length > 0 ? cleaned : text;
+}
+
+/**
  * Map an OpenClaw `AgentMessage` to a core `clinic.send` input.
  * Returns null when the message carries no routable text (caller should
  * treat that as a no-op ingest).
  */
 export function toClinicInput(message: AgentMessage): ClinicMessageInput | null {
-  const content = extractText(message.content);
-  if (content === null) return null;
+  const raw = extractText(message.content);
+  if (raw === null) return null;
+  const content = stripConversationWrapper(raw);
+  if (content.trim().length === 0) return null;
   return { role: toClinicRole(message.role), content };
 }
 
