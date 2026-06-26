@@ -49,9 +49,17 @@ export function tailTrim<T extends { content: string }>(
 /**
  * Assemble the request context from the current spaces.
  *
+ * CRITICAL invariant: the current turn's live tail (the user's actual question)
+ * MUST be preserved. At assemble time the current message is NOT yet in any
+ * space — ingestion runs in `afterTurn`, AFTER assemble — so a topic space only
+ * holds prior turns. Returning space history alone would drop the current
+ * question and make the model re-answer an old one (or not answer). We therefore
+ * inject the relevant topic history as a PREFIX and always append the host's
+ * current turn so the model sees the real question last.
+ *
  * @param spaces        current topic spaces (from `clinic.spaces()`)
  * @param prompt        the incoming user prompt for this turn
- * @param hostMessages  the messages OpenClaw assembled (pass-through fallback)
+ * @param hostMessages  the messages OpenClaw assembled (live; ends with the turn)
  * @param tokenBudget   model context budget, if known
  */
 export function assembleContext(
@@ -62,8 +70,7 @@ export function assembleContext(
 ): AssembleResult {
   const spaceId = chooseSpaceId(spaces, prompt);
   if (spaceId === null) {
-    // No topic space yet (cold start / inbox only) — defer to the host.
-    return passThrough(hostMessages);
+    return passThrough(hostMessages); // cold start / inbox only — defer to host
   }
 
   const space = spaces.find((s) => s.id === spaceId);
@@ -71,18 +78,50 @@ export function assembleContext(
     return passThrough(hostMessages);
   }
 
-  const trimmed: Message[] = tailTrim(space.messages, tokenBudget);
-  const messages = trimmed.map((m) => toAgentMessage({ role: m.role, content: m.content }));
+  // Always keep the current turn (the host's live tail), so the model sees the
+  // actual question — it isn't in the space yet (ingest runs in afterTurn).
+  const currentTail = currentTurnTail(hostMessages);
+  const reserve = agentMessagesTokens(currentTail);
+
+  let history: Message[];
+  if (!tokenBudget || tokenBudget <= 0) {
+    history = [...space.messages];
+  } else {
+    const historyBudget = tokenBudget - reserve;
+    history = historyBudget > 0 ? tailTrim(space.messages, historyBudget) : [];
+  }
+
+  const messages: AgentMessage[] = [
+    ...history.map((m) => toAgentMessage({ role: m.role, content: m.content })),
+    ...currentTail,
+  ];
   return {
     messages,
-    estimatedTokens: messagesTokens(trimmed),
+    estimatedTokens: messagesTokens(history) + reserve,
   };
 }
 
-function passThrough(hostMessages: AgentMessage[]): AssembleResult {
-  let est = 0;
-  for (const m of hostMessages) {
-    if (typeof m.content === 'string') est += estimateTokens(m.content);
+/**
+ * The current turn's messages = from the last user message to the end of the
+ * host's list. Guarantees the live question is included. Falls back to the
+ * single last message, or empty when there are none.
+ */
+function currentTurnTail(hostMessages: AgentMessage[]): AgentMessage[] {
+  if (hostMessages.length === 0) return [];
+  for (let i = hostMessages.length - 1; i >= 0; i--) {
+    if (hostMessages[i]!.role === 'user') return hostMessages.slice(i);
   }
-  return { messages: hostMessages, estimatedTokens: est };
+  return [hostMessages[hostMessages.length - 1]!];
+}
+
+function agentMessagesTokens(messages: readonly AgentMessage[]): number {
+  let total = 0;
+  for (const m of messages) {
+    if (typeof m.content === 'string') total += estimateTokens(m.content);
+  }
+  return total;
+}
+
+function passThrough(hostMessages: AgentMessage[]): AssembleResult {
+  return { messages: hostMessages, estimatedTokens: agentMessagesTokens(hostMessages) };
 }

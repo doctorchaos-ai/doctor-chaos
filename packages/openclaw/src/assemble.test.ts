@@ -53,14 +53,29 @@ describe('assembleContext', () => {
     expect(r.messages).toBe(HOST);
   });
 
-  it('returns the selected space history mapped to AgentMessages', () => {
+  it('injects space history then appends the current turn', () => {
     const s = space('pokemon', [msg('1', 'user', 'about pokemon'), msg('2', 'assistant', 'yes')]);
     const r = assembleContext([s], 'pokemon please', HOST, 1000);
     expect(r.messages).toEqual([
       { role: 'user', content: 'about pokemon' },
       { role: 'assistant', content: 'yes' },
+      { role: 'user', content: 'host message' }, // current turn preserved
     ]);
     expect(r.estimatedTokens).toBeGreaterThan(0);
+  });
+
+  it('always ends with the current live question (regression: lagged ingest)', () => {
+    // Space holds only PRIOR turns (current msg not ingested yet at assemble).
+    const s = space('a', [msg('1', 'user', 'OLD question'), msg('2', 'assistant', 'OLD answer')]);
+    const host: AgentMessage[] = [
+      { role: 'assistant', content: 'prev' },
+      { role: 'user', content: 'CURRENT question' },
+    ];
+    const r = assembleContext([s], 'CURRENT question', host, 1000);
+    expect(r.messages[r.messages.length - 1]).toEqual({
+      role: 'user',
+      content: 'CURRENT question',
+    });
   });
 
   it('respects the token budget (Property 5)', () => {
